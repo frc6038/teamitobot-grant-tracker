@@ -56,7 +56,11 @@ def _is_successful_get_me_response(response: Response) -> bool:
     except ValueError:
         return False
 
-    return isinstance(payload, dict) and payload.get("ok") is True
+    return (
+        isinstance(payload, dict)
+        and payload.get("ok") is True
+        and isinstance(payload.get("result"), dict)
+    )
 
 
 def validate_token(token: str) -> ValidationResult:

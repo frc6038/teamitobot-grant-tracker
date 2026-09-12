@@ -35,6 +35,114 @@ EXPECTED_MODULES = (
 CLEAN_INSTALL_TIMEOUT = 240
 
 
+def _build_and_install_wheel(tmp_path):
+    wheel_dir = tmp_path / "wheel"
+    wheel_dir.mkdir()
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--wheel-dir",
+            str(wheel_dir),
+            str(REPO_ROOT),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=CLEAN_INSTALL_TIMEOUT - 30,
+    )
+
+    wheels = list(wheel_dir.glob("*.whl"))
+    assert len(wheels) == 1
+
+    python = _venv_python(tmp_path / "venv")
+
+    subprocess.run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            str(wheels[0]),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=CLEAN_INSTALL_TIMEOUT - 30,
+    )
+
+    return python
+
+
+def _run_installed_token_setup(python, cwd, env):
+    script = r"""
+import os
+import runpy
+import sys
+import requests
+
+
+class FakeResponse:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        return None
+
+
+def fake_get(*args, **kwargs):
+    mode = os.environ["TOKEN_SETUP_TEST_RESPONSE"]
+
+    if mode == "network":
+        raise requests.RequestException("simulated provider failure")
+
+    if mode == "unauthorized":
+        return FakeResponse(401, {"ok": False})
+
+    if mode == "malformed":
+        return FakeResponse(200, {"ok": True})
+
+    if mode == "valid":
+        return FakeResponse(
+            200,
+            {
+                "ok": True,
+                "result": {
+                    "id": 123456789,
+                    "is_bot": True,
+                },
+            },
+        )
+
+    raise AssertionError(f"unknown test mode: {mode}")
+
+
+requests.get = fake_get
+
+sys.argv = ["tools.token_setup"]
+
+runpy.run_module("tools.token_setup", run_name="__main__")
+"""
+
+    return subprocess.run(
+        [str(python), "-c", script],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
 def _venv_python(venv_dir):
     venv.create(venv_dir, with_pip=True)
     if sys.platform.startswith("win"):
@@ -243,45 +351,7 @@ def test_clean_runtime_install_excludes_dev_tools_and_imports(tmp_path):
 
 @pytest.mark.timeout(CLEAN_INSTALL_TIMEOUT)
 def test_clean_wheel_install_runs_token_setup_outside_source_tree(tmp_path):
-    wheel_dir = tmp_path / "wheel"
-    wheel_dir.mkdir()
-
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "wheel",
-            "--no-deps",
-            "--wheel-dir",
-            str(wheel_dir),
-            str(REPO_ROOT),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=CLEAN_INSTALL_TIMEOUT - 30,
-    )
-
-    wheels = list(wheel_dir.glob("*.whl"))
-    assert len(wheels) == 1
-
-    python = _venv_python(tmp_path / "venv")
-
-    subprocess.run(
-        [
-            str(python),
-            "-m",
-            "pip",
-            "install",
-            "--quiet",
-            str(wheels[0]),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=CLEAN_INSTALL_TIMEOUT - 30,
-    )
+    python = _build_and_install_wheel(tmp_path)
 
     import_cwd = tmp_path / "import-cwd"
     import_cwd.mkdir()
@@ -303,6 +373,7 @@ def test_clean_wheel_install_runs_token_setup_outside_source_tree(tmp_path):
     assert result.returncode == 1
     assert "TELEGRAM_BOT_TOKEN is not set in the environment." in result.stderr
     assert str(REPO_ROOT) not in result.stdout + result.stderr
+    assert list(import_cwd.iterdir()) == []
 
     module_check = subprocess.run(
         [
@@ -320,6 +391,49 @@ def test_clean_wheel_install_runs_token_setup_outside_source_tree(tmp_path):
         check=True,
         timeout=30,
     )
+
+    secret_token = "123456789:SuperSecret_Test-Token"
+
+    scenarios = (
+        ("invalid-format", "not-a-valid-token", None, 1),
+        ("unauthorized", secret_token, "unauthorized", 1),
+        ("network", secret_token, "network", 2),
+        ("malformed", secret_token, "malformed", 2),
+        ("valid", secret_token, "valid", 0),
+    )
+
+    for name, token, response_mode, expected_code in scenarios:
+        scenario_cwd = tmp_path / f"scenario-{name}"
+        scenario_cwd.mkdir()
+
+        scenario_env = {
+            **os.environ,
+            "TELEGRAM_BOT_TOKEN": token,
+        }
+
+        if response_mode is None:
+            result = subprocess.run(
+                [str(python), "-m", "tools.token_setup"],
+                cwd=scenario_cwd,
+                env=scenario_env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        else:
+            scenario_env["TOKEN_SETUP_TEST_RESPONSE"] = response_mode
+            result = _run_installed_token_setup(
+                python,
+                scenario_cwd,
+                scenario_env,
+            )
+
+        combined_output = result.stdout + result.stderr
+
+        assert result.returncode == expected_code
+        assert token not in combined_output
+        assert str(REPO_ROOT) not in combined_output
+        assert list(scenario_cwd.iterdir()) == []
 
     assert "site-packages" in module_check.stdout
     assert str(REPO_ROOT) not in module_check.stdout

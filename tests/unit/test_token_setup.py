@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -15,8 +14,6 @@ from tools.token_setup.validator import (
     ValidationStatus,
     validate_token,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 VALID_TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456789"
 INVALID_TOKEN = "123456789:INVALIDTOKEN123456789"
@@ -115,6 +112,21 @@ def test_validate_token_returns_unavailable_for_malformed_response(
     assert result.status is ValidationStatus.UNAVAILABLE
 
 
+def test_validate_token_returns_unavailable_when_success_payload_has_no_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {"ok": True}
+
+    get = Mock(return_value=response)
+    monkeypatch.setattr(validator.requests, "get", get)
+
+    result = validate_token(VALID_TOKEN)
+
+    assert result.status is ValidationStatus.UNAVAILABLE
+
+
 def test_validate_token_returns_unavailable_for_unsuccessful_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -135,7 +147,10 @@ def test_validate_token_does_not_store_token_in_result(
 ) -> None:
     response = Mock()
     response.status_code = 200
-    response.json.return_value = {"ok": True}
+    response.json.return_value = {
+        "ok": True,
+        "result": {"is_bot": True},
+    }
 
     monkeypatch.setattr(requests, "get", Mock(return_value=response))
 
@@ -162,7 +177,6 @@ def test_validate_token_does_not_include_token_in_exception(
 def test_cli_reports_missing_environment_variable_without_token(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
 ) -> None:
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.setattr(sys, "argv", ["token_setup"])
@@ -174,13 +188,11 @@ def test_cli_reports_missing_environment_variable_without_token(
     assert captured.out == ""
     assert "TELEGRAM_BOT_TOKEN is not set in the environment." in captured.err
     assert SECRET_SENTINEL not in captured.out + captured.err
-    assert not list(tmp_path.iterdir())
 
 
 def test_cli_rejects_invalid_token_format(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "not-a-valid-token")
     monkeypatch.setattr(sys, "argv", ["token_setup"])
@@ -194,13 +206,11 @@ def test_cli_rejects_invalid_token_format(
         "TELEGRAM_BOT_TOKEN does not have a valid Telegram bot token format."
         in captured.err
     )
-    assert not list(tmp_path.iterdir())
 
 
 def test_cli_validates_environment_token_without_echoing_secret(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", SECRET_SENTINEL)
     monkeypatch.setattr(sys, "argv", ["token_setup"])
@@ -217,7 +227,6 @@ def test_cli_validates_environment_token_without_echoing_secret(
     assert captured.err == ""
     assert SECRET_SENTINEL not in captured.out + captured.err
     validate.assert_called_once_with(SECRET_SENTINEL)
-    assert not list(tmp_path.iterdir())
 
 
 def test_cli_rejects_unexpected_argument_without_reading_environment(
