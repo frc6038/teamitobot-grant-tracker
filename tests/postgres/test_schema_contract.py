@@ -113,6 +113,31 @@ def _apply_ddl(database_url, ddl):
         engine.dispose()
 
 
+def _assert_main_refuses_and_does_not_stamp(
+    scratch_url, monkeypatch, capsys, expected_stderr_substring
+):
+    """main()'i gerçek CLI yolundan çalıştırıp exit=1, beklenen redacted
+    hata mesajı ve alembic_version tablosunun HİÇ yazılmadığını doğrular."""
+
+    import verify_and_stamp_baseline
+
+    monkeypatch.setenv("DATABASE_URL", scratch_url)
+    exit_code = verify_and_stamp_baseline.main()
+    assert exit_code == 1
+    stderr = capsys.readouterr().err
+    assert expected_stderr_substring in stderr
+
+    engine = create_engine(scratch_url)
+    try:
+        with engine.connect() as connection:
+            version_table = connection.execute(
+                text("SELECT to_regclass('public.alembic_version')")
+            ).scalar()
+    finally:
+        engine.dispose()
+    assert version_table is None
+
+
 def test_expected_schema_matches_real_baseline_migration(pg_engine):
     """EXPECTED_SCHEMA sözleşmesi, gerçek alembic upgrade head sonucuyla
     (ORM'den değil, migration dosyasından üretilen şemayla) hâlâ eşleşiyor
@@ -273,28 +298,21 @@ def test_missing_foreign_key_is_rejected(pg_engine):
         _drop_scratch_database(scratch_url)
 
 
-def test_missing_non_unique_index_is_rejected(pg_engine):
+def test_missing_non_unique_index_is_rejected(pg_engine, monkeypatch, capsys):
     scratch_url = _create_scratch_database()
     try:
         broken_ddl = INDEPENDENT_LEGACY_DDL.replace(
             "CREATE INDEX ix_grants_detected_at ON grants (detected_at);\n", ""
         )
         _apply_ddl(scratch_url, broken_ddl)
-
-        engine = create_engine(scratch_url)
-        try:
-            inspector = inspect(engine)
-            actual = describe_actual_schema(inspector, EXPECTED_SCHEMA.keys())
-        finally:
-            engine.dispose()
-
-        mismatches = diff_schema(EXPECTED_SCHEMA, actual)
-        assert any("grants" in m and "index uyuşmuyor" in m for m in mismatches)
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "grants: index uyuşmuyor"
+        )
     finally:
         _drop_scratch_database(scratch_url)
 
 
-def test_wrong_index_columns_is_rejected(pg_engine):
+def test_wrong_index_columns_is_rejected(pg_engine, monkeypatch, capsys):
     scratch_url = _create_scratch_database()
     try:
         broken_ddl = INDEPENDENT_LEGACY_DDL.replace(
@@ -302,21 +320,72 @@ def test_wrong_index_columns_is_rejected(pg_engine):
             "CREATE INDEX ix_grants_detected_at ON grants (title);",
         )
         _apply_ddl(scratch_url, broken_ddl)
-
-        engine = create_engine(scratch_url)
-        try:
-            inspector = inspect(engine)
-            actual = describe_actual_schema(inspector, EXPECTED_SCHEMA.keys())
-        finally:
-            engine.dispose()
-
-        mismatches = diff_schema(EXPECTED_SCHEMA, actual)
-        assert any("grants" in m and "index uyuşmuyor" in m for m in mismatches)
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "grants: index uyuşmuyor"
+        )
     finally:
         _drop_scratch_database(scratch_url)
 
 
-def test_missing_autoincrement_is_rejected(pg_engine):
+def test_renamed_index_is_rejected(pg_engine, monkeypatch, capsys):
+    """Aynı kolonu/uniqueness'ı kapsayan ama farklı isimli bir index eskiden
+    'eşleşiyor' sayılıyordu (sadece column_names+unique karşılaştırılıyordu);
+    artık index adı da sözleşmenin parçası."""
+
+    scratch_url = _create_scratch_database()
+    try:
+        broken_ddl = INDEPENDENT_LEGACY_DDL.replace(
+            "CREATE INDEX ix_grants_detected_at ON grants (detected_at);",
+            "CREATE INDEX ix_grants_other_name ON grants (detected_at);",
+        )
+        _apply_ddl(scratch_url, broken_ddl)
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "grants: index uyuşmuyor"
+        )
+    finally:
+        _drop_scratch_database(scratch_url)
+
+
+def test_partial_index_predicate_is_rejected(pg_engine, monkeypatch, capsys):
+    """WHERE predicate'li bir partial index, aynı isim/kolon/uniqueness'a
+    sahip olsa bile tam index'ten farklı coverage sağlar; eskiden bu fark
+    hiç yakalanmıyordu."""
+
+    scratch_url = _create_scratch_database()
+    try:
+        broken_ddl = INDEPENDENT_LEGACY_DDL.replace(
+            "CREATE INDEX ix_grants_detected_at ON grants (detected_at);",
+            "CREATE INDEX ix_grants_detected_at ON grants (detected_at) "
+            "WHERE detected_at IS NOT NULL;",
+        )
+        _apply_ddl(scratch_url, broken_ddl)
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "grants: index uyuşmuyor"
+        )
+    finally:
+        _drop_scratch_database(scratch_url)
+
+
+def test_hash_index_method_is_rejected(pg_engine, monkeypatch, capsys):
+    """Hash tabanlı bir index, planner davranışı btree'den tamamen farklı
+    olduğu halde eskiden aynı sayılıyordu; artık access method da
+    karşılaştırılıyor."""
+
+    scratch_url = _create_scratch_database()
+    try:
+        broken_ddl = INDEPENDENT_LEGACY_DDL.replace(
+            "CREATE INDEX ix_grants_detected_at ON grants (detected_at);",
+            "CREATE INDEX ix_grants_detected_at ON grants USING hash (detected_at);",
+        )
+        _apply_ddl(scratch_url, broken_ddl)
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "grants: index uyuşmuyor"
+        )
+    finally:
+        _drop_scratch_database(scratch_url)
+
+
+def test_missing_autoincrement_is_rejected(pg_engine, monkeypatch, capsys):
     """Baseline'da id kolonları sequence-backed (SERIAL); production'da düz
     INTEGER PRIMARY KEY olursa (sequence yok) verifier bunu yakalamalı,
     aksi halde ID otomatik üretilemeyen bir production DB stamp'lenir."""
@@ -328,16 +397,9 @@ def test_missing_autoincrement_is_rejected(pg_engine):
             "id INTEGER PRIMARY KEY,\n    chat_id",
         )
         _apply_ddl(scratch_url, broken_ddl)
-
-        engine = create_engine(scratch_url)
-        try:
-            inspector = inspect(engine)
-            actual = describe_actual_schema(inspector, EXPECTED_SCHEMA.keys())
-        finally:
-            engine.dispose()
-
-        mismatches = diff_schema(EXPECTED_SCHEMA, actual)
-        assert any("users.id" in m and "autoincrement" in m for m in mismatches)
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "users.id: autoincrement"
+        )
     finally:
         _drop_scratch_database(scratch_url)
 
@@ -345,8 +407,6 @@ def test_missing_autoincrement_is_rejected(pg_engine):
 def test_main_refuses_stamp_when_table_missing(pg_engine, monkeypatch, capsys):
     """main() gerçek CLI yolunda eksik bir tabloyu redacted bir hatayla
     reddetmeli; sadece diff_schema() birim testi değil, uçtan uca kanıt."""
-
-    import verify_and_stamp_baseline
 
     scratch_url = _create_scratch_database()
     try:
@@ -357,23 +417,9 @@ def test_main_refuses_stamp_when_table_missing(pg_engine, monkeypatch, capsys):
         ]
         broken_ddl = INDEPENDENT_LEGACY_DDL.replace(stats_block, "")
         _apply_ddl(scratch_url, broken_ddl)
-
-        monkeypatch.setenv("DATABASE_URL", scratch_url)
-        exit_code = verify_and_stamp_baseline.main()
-        assert exit_code == 1
-        stderr = capsys.readouterr().err
-        assert "eşleşmiyor" in stderr
-        assert "tablo eksik: stats" in stderr
-
-        engine = create_engine(scratch_url)
-        try:
-            with engine.connect() as connection:
-                version_table = connection.execute(
-                    text("SELECT to_regclass('public.alembic_version')")
-                ).scalar()
-        finally:
-            engine.dispose()
-        assert version_table is None
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "tablo eksik: stats"
+        )
     finally:
         _drop_scratch_database(scratch_url)
 
@@ -385,8 +431,6 @@ def test_main_refuses_stamp_when_unexpected_extra_table_exists(
     tabloları inceliyor; production'da baseline'da olmayan bir tablo varsa
     bu da fark edilmeden geçmemeli."""
 
-    import verify_and_stamp_baseline
-
     scratch_url = _create_scratch_database()
     try:
         extra_table_ddl = (
@@ -394,48 +438,21 @@ def test_main_refuses_stamp_when_unexpected_extra_table_exists(
             + "\nCREATE TABLE audit_log (\n    id SERIAL PRIMARY KEY\n);\n"
         )
         _apply_ddl(scratch_url, extra_table_ddl)
-
-        monkeypatch.setenv("DATABASE_URL", scratch_url)
-        exit_code = verify_and_stamp_baseline.main()
-        assert exit_code == 1
-        stderr = capsys.readouterr().err
-        assert "beklenmeyen ekstra tablo: audit_log" in stderr
-
-        engine = create_engine(scratch_url)
-        try:
-            with engine.connect() as connection:
-                version_table = connection.execute(
-                    text("SELECT to_regclass('public.alembic_version')")
-                ).scalar()
-        finally:
-            engine.dispose()
-        assert version_table is None
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "beklenmeyen ekstra tablo: audit_log"
+        )
     finally:
         _drop_scratch_database(scratch_url)
 
 
 def test_main_refuses_stamp_on_schema_mismatch(pg_engine, monkeypatch, capsys):
-    import verify_and_stamp_baseline
-
     scratch_url = _create_scratch_database()
     try:
         broken_ddl = INDEPENDENT_LEGACY_DDL.replace("    is_subscribed BOOLEAN,\n", "")
         _apply_ddl(scratch_url, broken_ddl)
-
-        monkeypatch.setenv("DATABASE_URL", scratch_url)
-        exit_code = verify_and_stamp_baseline.main()
-        assert exit_code == 1
-        assert "eşleşmiyor" in capsys.readouterr().err
-
-        engine = create_engine(scratch_url)
-        try:
-            with engine.connect() as connection:
-                version_table = connection.execute(
-                    text("SELECT to_regclass('public.alembic_version')")
-                ).scalar()
-        finally:
-            engine.dispose()
-        assert version_table is None
+        _assert_main_refuses_and_does_not_stamp(
+            scratch_url, monkeypatch, capsys, "eşleşmiyor"
+        )
     finally:
         _drop_scratch_database(scratch_url)
 

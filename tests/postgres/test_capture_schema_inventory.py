@@ -100,12 +100,13 @@ def test_capture_produces_checksummed_structure_only_inventory(pg_engine):
 
         inventory = json.loads(result.stdout)
         assert inventory["environment_id"] == "pytest-scratch"
-        assert "PostgreSQL" in inventory["postgres_version"]
+        assert inventory["postgres_major_version"] == 16
         assert len(inventory["schema_checksum_sha256"]) == 64
         assert set(inventory["schema"]) == {"users", "grants", "notifications", "stats"}
 
         # Satır verisi/secret asla çıktıda olmamalı; şema tanımı dışında
-        # hiçbir şey (bağlantı bilgisi dahil) yazılmamalı.
+        # hiçbir şey (bağlantı bilgisi, tam sürüm string'i dahil) yazılmamalı.
         assert scratch_url not in result.stdout
+        assert "compiled by" not in result.stdout
     finally:
         _drop_scratch_database(scratch_url)

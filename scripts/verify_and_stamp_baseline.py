@@ -54,7 +54,9 @@ EXPECTED_SCHEMA = {
         "primary_key": ("id",),
         "unique_constraints": frozenset(),
         "foreign_keys": frozenset(),
-        "indexes": frozenset({(("chat_id",), True)}),
+        "indexes": frozenset(
+            {("ix_users_chat_id", ("chat_id",), True, "btree", None, ())}
+        ),
     },
     "grants": {
         "columns": {
@@ -77,7 +79,9 @@ EXPECTED_SCHEMA = {
         "primary_key": ("id",),
         "unique_constraints": frozenset(),
         "foreign_keys": frozenset(),
-        "indexes": frozenset({(("detected_at",), False)}),
+        "indexes": frozenset(
+            {("ix_grants_detected_at", ("detected_at",), False, "btree", None, ())}
+        ),
     },
     "notifications": {
         "columns": {
@@ -164,9 +168,19 @@ def describe_actual_schema(inspector: Inspector, table_names) -> dict:
         )
         # Bir unique constraint'in arkasındaki otomatik index'i ayrı bir
         # index gibi saymamak için dışarıda bırakıyoruz; hem unique hem
-        # non-unique index'ler (ör. ix_grants_detected_at) dahil.
+        # non-unique index'ler (ör. ix_grants_detected_at) dahil. Ad,
+        # access method (btree/hash/gin/...) ve partial predicate de dahil
+        # ediliyor; aksi halde aynı isimde ama farklı davranışlı bir index
+        # (ör. WHERE predicate'li veya hash tabanlı) fark edilmeden geçer.
         indexes = frozenset(
-            (tuple(index["column_names"]), index["unique"])
+            (
+                index["name"],
+                tuple(index["column_names"]),
+                index["unique"],
+                index.get("dialect_options", {}).get("postgresql_using", "btree"),
+                index.get("dialect_options", {}).get("postgresql_where"),
+                tuple(index.get("include_columns") or ()),
+            )
             for index in inspector.get_indexes(table_name)
             if not index.get("duplicates_constraint")
         )

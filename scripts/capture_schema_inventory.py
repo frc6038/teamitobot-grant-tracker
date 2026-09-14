@@ -44,7 +44,8 @@ def _to_json_safe(schema: dict) -> dict:
             "unique_constraints": sorted(list(c) for c in table["unique_constraints"]),
             "foreign_keys": sorted(list(fk) for fk in table["foreign_keys"]),
             "indexes": sorted(
-                [list(columns), unique] for columns, unique in table["indexes"]
+                [name, list(columns), unique, using, where, list(include)]
+                for name, columns, unique, using, where, include in table["indexes"]
             ),
         }
     return safe
@@ -68,7 +69,11 @@ def main() -> int:
     engine = create_engine(database_url)
     try:
         with engine.connect() as connection:
-            postgres_version = connection.execute(text("SELECT version()")).scalar()
+            # Tam "SELECT version()" çıktısı patch/build/OS/derleyici detayı
+            # sızdırır; sadece PostgreSQL major sürümünü tutuyoruz
+            # (server_version_num formatı MMmmpp, ör. 160015 -> major 16).
+            version_num = connection.execute(text("SHOW server_version_num")).scalar()
+            postgres_major_version = int(version_num) // 10000
         inspector = inspect(engine)
         table_names = set(inspector.get_table_names()) - {"alembic_version"}
         schema = describe_actual_schema(inspector, table_names)
@@ -82,7 +87,7 @@ def main() -> int:
     inventory = {
         "captured_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "environment_id": environment_id,
-        "postgres_version": postgres_version,
+        "postgres_major_version": postgres_major_version,
         "redaction_method": (
             "yalnız information_schema/pg_catalog üzerinden yapı introspection; "
             "hiçbir satır verisi veya secret sorgulanmadı/yazılmadı"
