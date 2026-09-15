@@ -222,9 +222,7 @@ def test_token_is_stripped_before_request():
 
     requested_url = mocked_get.call_args.args[0]
 
-    assert requested_url == (
-        f"{TELEGRAM_API_BASE_URL}/bot{SECRET_TOKEN}/getMe"
-    )
+    assert requested_url == (f"{TELEGRAM_API_BASE_URL}/bot{SECRET_TOKEN}/getMe")
 
 
 def test_timeout_is_set():
@@ -246,9 +244,7 @@ def test_timeout_is_set():
     ) as mocked_get:
         validate_token(SECRET_TOKEN)
 
-    assert mocked_get.call_args.kwargs["timeout"] == (
-        TELEGRAM_REQUEST_TIMEOUT_SECONDS
-    )
+    assert mocked_get.call_args.kwargs["timeout"] == (TELEGRAM_REQUEST_TIMEOUT_SECONDS)
 
 
 def test_request_does_not_disable_tls_verification():
@@ -414,7 +410,8 @@ def test_test_hook_is_ignored_outside_test_environment(monkeypatch):
         result = validate_token(SECRET_TOKEN)
 
     assert result.status is ValidationStatus.INVALID
-    
+
+
 def test_request_does_not_follow_redirects():
     response = _response(
         200,

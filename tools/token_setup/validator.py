@@ -19,6 +19,7 @@ TEST_RESPONSE_ENV: Final = "TOKEN_SETUP_TEST_RESPONSE"
 
 TOKEN_PATTERN: Final = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
 
+
 def has_valid_token_format(token: str) -> bool:
     """Return whether the token has a recognizable Telegram format."""
     return isinstance(token, str) and bool(TOKEN_PATTERN.fullmatch(token))

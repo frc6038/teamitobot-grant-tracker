@@ -113,6 +113,7 @@ async def run_loop_until_messages(
     finally:
         await cancel_task(task)
 
+
 def assert_standard_message_options(call: dict) -> None:
     """Verify common Telegram message options used by the bot."""
     assert call["parse_mode"] == "Markdown"
@@ -165,19 +166,15 @@ def create_fake_application_for_main():
     fake_updater.running = False
     fake_updater.start = AsyncMock()
     fake_updater.stop = AsyncMock()
-    fake_updater.start_polling = AsyncMock(
-        side_effect=asyncio.CancelledError
-    )
+    fake_updater.start_polling = AsyncMock(side_effect=asyncio.CancelledError)
 
     fake_app.updater = fake_updater
 
     async def fake_aenter(self):
         return fake_app
 
-
     async def fake_aexit(self, exc_type, exc_value, traceback):
         return False
-
 
     fake_app.__aenter__ = fake_aenter
     fake_app.__aexit__ = fake_aexit
@@ -544,6 +541,7 @@ def test_notification_batching_5(fake_application):
         bot.last_scrape_time = bot.time.time() - 1000
 
         try:
+
             async def run_test():
                 await run_loop_until_messages(
                     fake_application=fake_application,
@@ -606,6 +604,7 @@ def test_notification_batching_11(fake_application):
         bot.last_scrape_time = bot.time.time() - 1000
 
         try:
+
             async def run_test():
                 await run_loop_until_messages(
                     fake_application=fake_application,
@@ -681,6 +680,7 @@ def test_title_truncation(fake_application):
         bot.last_scrape_time = bot.time.time() - 1000
 
         try:
+
             async def run_test():
                 await run_loop_until_messages(
                     fake_application=fake_application,
@@ -736,6 +736,7 @@ def test_markdown_special_chars(fake_application):
         bot.last_scrape_time = bot.time.time() - 1000
 
         try:
+
             async def run_test():
                 await run_loop_until_messages(
                     fake_application=fake_application,
@@ -788,6 +789,7 @@ def test_missing_optional_fields(fake_application):
         bot.last_scrape_time = bot.time.time() - 1000
 
         try:
+
             async def run_test():
                 await run_loop_until_messages(
                     fake_application=fake_application,
@@ -865,10 +867,9 @@ def test_send_failure_behavior(fake_application):
         bot.last_scrape_time = bot.time.time() - 1000
 
         try:
+
             async def run_test():
-                task = asyncio.create_task(
-                    scrape_and_notify_loop(fake_application)
-                )
+                task = asyncio.create_task(scrape_and_notify_loop(fake_application))
 
                 try:
                     await wait_for_send_attempts(
@@ -1161,10 +1162,9 @@ def test_send_failure_then_success_second_cycle(fake_application):
         bot.last_scrape_time = bot.time.time() - 1000
 
         try:
+
             async def run_test():
-                task = asyncio.create_task(
-                    scrape_and_notify_loop(fake_application)
-                )
+                task = asyncio.create_task(scrape_and_notify_loop(fake_application))
 
                 try:
                     await wait_for_send_attempts(

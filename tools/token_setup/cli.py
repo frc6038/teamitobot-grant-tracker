@@ -23,12 +23,9 @@ EXIT_UNAVAILABLE: Final = 2
 MESSAGE_VALID: Final = "Telegram bot token is valid."
 MESSAGE_INVALID: Final = "Telegram bot token is invalid."
 MESSAGE_UNAVAILABLE: Final = "Telegram Bot API is currently unavailable."
-MESSAGE_MISSING: Final = (
-    f"{TELEGRAM_BOT_TOKEN_ENV} is not set in the environment."
-)
+MESSAGE_MISSING: Final = f"{TELEGRAM_BOT_TOKEN_ENV} is not set in the environment."
 MESSAGE_FORMAT: Final = (
-    f"{TELEGRAM_BOT_TOKEN_ENV} does not have a valid "
-    "Telegram bot token format."
+    f"{TELEGRAM_BOT_TOKEN_ENV} does not have a valid Telegram bot token format."
 )
 
 MESSAGE_ARGUMENTS: Final = (
@@ -70,11 +67,7 @@ def main(validate_token_func: TokenValidator | None = None) -> int:
         print(MESSAGE_FORMAT, file=sys.stderr)
         return EXIT_INVALID
 
-    validator = (
-        validate_token
-        if validate_token_func is None
-        else validate_token_func
-    )
+    validator = validate_token if validate_token_func is None else validate_token_func
 
     try:
         result = validator(token)

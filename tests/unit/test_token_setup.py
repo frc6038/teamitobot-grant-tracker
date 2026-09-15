@@ -134,6 +134,7 @@ def test_validate_token_returns_unavailable_when_success_payload_has_no_result(
 
     assert result.status is ValidationStatus.UNAVAILABLE
 
+
 def test_validate_token_returns_unavailable_for_empty_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -150,6 +151,7 @@ def test_validate_token_returns_unavailable_for_empty_result(
     result = validate_token(VALID_TOKEN)
 
     assert result.status is ValidationStatus.UNAVAILABLE
+
 
 @pytest.mark.parametrize(
     "result",

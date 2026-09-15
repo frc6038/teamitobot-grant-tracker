@@ -24,10 +24,7 @@ def test_missing_token_returns_invalid(monkeypatch, capsys):
     captured = capsys.readouterr()
 
     assert result == cli.EXIT_INVALID
-    assert (
-        "TELEGRAM_BOT_TOKEN is not set in the environment."
-        in captured.err
-    )
+    assert "TELEGRAM_BOT_TOKEN is not set in the environment." in captured.err
     assert SECRET_TOKEN not in captured.out + captured.err
 
 
@@ -40,10 +37,7 @@ def test_empty_token_returns_invalid(monkeypatch, capsys):
     captured = capsys.readouterr()
 
     assert result == cli.EXIT_INVALID
-    assert (
-        "TELEGRAM_BOT_TOKEN is not set in the environment."
-        in captured.err
-    )
+    assert "TELEGRAM_BOT_TOKEN is not set in the environment." in captured.err
 
 
 def test_whitespace_token_returns_invalid(monkeypatch, capsys):
@@ -55,10 +49,7 @@ def test_whitespace_token_returns_invalid(monkeypatch, capsys):
     captured = capsys.readouterr()
 
     assert result == cli.EXIT_INVALID
-    assert (
-        "TELEGRAM_BOT_TOKEN is not set in the environment."
-        in captured.err
-    )
+    assert "TELEGRAM_BOT_TOKEN is not set in the environment." in captured.err
 
 
 def test_invalid_format_returns_invalid(monkeypatch, capsys):

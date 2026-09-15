@@ -202,21 +202,14 @@ def test_dependency_groups_are_separated():
         data = tomllib.load(handle)
 
     runtime_deps = {
-        dep.split("==")[0].lower()
-        for dep in data["project"]["dependencies"]
+        dep.split("==")[0].lower() for dep in data["project"]["dependencies"]
     }
 
     extras = data["project"]["optional-dependencies"]
 
-    test_deps = {
-        dep.split("==")[0].lower()
-        for dep in extras["test"]
-    }
+    test_deps = {dep.split("==")[0].lower() for dep in extras["test"]}
 
-    dev_deps = {
-        dep.split("==")[0].lower().split("[")[0]
-        for dep in extras["dev"]
-    }
+    dev_deps = {dep.split("==")[0].lower().split("[")[0] for dep in extras["dev"]}
 
     assert "pytest" not in runtime_deps
     assert "ruff" not in runtime_deps
@@ -233,8 +226,7 @@ def test_lock_file_pins_every_runtime_dependency_at_declared_version():
 
     with open(REPO_ROOT / "pyproject.toml", "rb") as handle:
         declared = dict(
-            dep.split("==")
-            for dep in tomllib.load(handle)["project"]["dependencies"]
+            dep.split("==") for dep in tomllib.load(handle)["project"]["dependencies"]
         )
 
     lock_versions = {}
@@ -258,8 +250,7 @@ def test_requirements_txt_matches_pyproject_exactly():
 
     with open(REPO_ROOT / "pyproject.toml", "rb") as handle:
         declared = dict(
-            dep.split("==")
-            for dep in tomllib.load(handle)["project"]["dependencies"]
+            dep.split("==") for dep in tomllib.load(handle)["project"]["dependencies"]
         )
 
     requirements_txt = {}
@@ -273,10 +264,7 @@ def test_requirements_txt_matches_pyproject_exactly():
         name, version = line.split("==")
         requirements_txt[name.lower()] = version
 
-    declared_normalized = {
-        name.lower(): version
-        for name, version in declared.items()
-    }
+    declared_normalized = {name.lower(): version for name, version in declared.items()}
 
     assert requirements_txt == declared_normalized
 
@@ -312,10 +300,7 @@ def test_wheel_build_contains_expected_modules_only(tmp_path):
     for expected in EXPECTED_MODULES:
         assert expected in names
 
-    assert not any(
-        "pytest" in name or "ruff" in name
-        for name in names
-    )
+    assert not any("pytest" in name or "ruff" in name for name in names)
 
 
 def test_wheel_build_is_reproducible(tmp_path):
@@ -355,9 +340,7 @@ def test_wheel_build_is_reproducible(tmp_path):
 
         wheel = next(out_dir.glob("*.whl"))
 
-        file_hashes.append(
-            hashlib.sha256(wheel.read_bytes()).hexdigest()
-        )
+        file_hashes.append(hashlib.sha256(wheel.read_bytes()).hexdigest())
 
         with ZipFile(wheel) as archive:
             content_hashes_list.append(
@@ -401,9 +384,7 @@ def test_clean_runtime_install_excludes_dev_tools_and_imports(tmp_path):
     env = {
         **os.environ,
         "TELEGRAM_BOT_TOKEN": "dummy-token",
-        "DATABASE_URL": (
-            "postgresql://user:pass@127.0.0.1:1/itobot_test"
-        ),
+        "DATABASE_URL": ("postgresql://user:pass@127.0.0.1:1/itobot_test"),
     }
 
     # Kaynak checkout'taki bot.py/config.py dosyalarının yanlışlıkla import
@@ -454,10 +435,7 @@ def test_clean_wheel_install_runs_token_setup_outside_source_tree(tmp_path):
     )
 
     assert result.returncode == 1
-    assert (
-        "TELEGRAM_BOT_TOKEN is not set in the environment."
-        in result.stderr
-    )
+    assert "TELEGRAM_BOT_TOKEN is not set in the environment." in result.stderr
     assert str(REPO_ROOT) not in result.stdout + result.stderr
     assert list(import_cwd.iterdir()) == []
 
