@@ -147,8 +147,8 @@ def test_database_connection_failure_currently_exits_zero(tmp_path):
 
     result = run_python([BOT_SCRIPT], make_env(), tmp_path)
 
-    assert "Fatal error" in result.stdout
-    assert result.returncode == 0
+    assert "Fatal error" in result.stderr
+    assert result.returncode != 0
 
 
 def test_health_server_survives_port_already_in_use(tmp_path):

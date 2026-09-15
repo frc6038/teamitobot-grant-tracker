@@ -1,10 +1,10 @@
 # Token Setup and Validation
 
-Bu doküman, İTOBOT Grant Tracker için Telegram bot token'ının canonical yapılandırma ve doğrulama akışını tanımlar.
+Bu doküman, İTOBOT Grant Tracker için Telegram bot token'ının yapılandırma, startup validation ve opsiyonel doğrulama akışını tanımlar.
 
-## 1. Canonical Secret Flow
+## 1. Canonical Configuration Flow
 
-Telegram bot token'ı uygulamanın configuration kaynağıdır ve runtime environment üzerinden sağlanır.
+Telegram bot token'ı uygulamanın runtime configuration kaynağıdır ve process environment üzerinden sağlanır.
 
 Canonical akış:
 
@@ -23,18 +23,21 @@ Process Environment
 Application Bootstrap
         │
         ▼
-Typed Settings
+Application Configuration
+        │
+        ▼
+Telegram Bot Runtime
 ```
 
-Production ortamında `TELEGRAM_BOT_TOKEN`, provider'ın environment/secret mekanizması üzerinden tanımlanmalıdır.
+Production ortamında TELEGRAM_BOT_TOKEN, deployment provider'ın environment veya secret yönetimi üzerinden tanımlanmalıdır.
 
 Token:
 
-* source code içine yazılmamalıdır.
+* Sommurce code içine yazılmamalıdır.
 * Git repository'sine commit edilmemelidir.
 * README, issue, log veya test çıktısına yazılmamalıdır.
-* command-line argümanı olarak verilmemelidir.
-* kalıcı bir token dosyasına yazılmamalıdır.
+* Command-line argümanı olarak verilmemelidir.
+* Kalıcı bir token dosyasına yazılmamalıdır.
 
 `TELEGRAM_BOT_TOKEN` uygulama tarafından startup sırasında environment'tan okunur ve typed settings yapısına aktarılır.
 
@@ -48,11 +51,35 @@ Development ortamında `.env` kullanılabilir; bu dosya yalnızca local developm
 | -------- | -------- | ----------- |
 | `TELEGRAM_BOT_TOKEN` | Yes | Telegram Bot API authentication token |
 
-Eksik veya geçersiz configuration uygulamanın startup sırasında non-zero exit ile durmasına neden olur.
+Uygulama startup sırasında gerekli configuration değerlerini kontrol eder. Gerekli `TELEGRAM_BOT_TOKEN` değeri eksik veya geçersizse application startup başarısız olur ve process non-zero exit code ile sonlanır.
 
 Configuration hataları secret değerini göstermez. Yalnızca ilgili environment variable'ın adı raporlanabilir.
 
-## 3. Optional Token Validator
+## 3. Startup Validation Contract
+
+Application bootstrap sırasında TELEGRAM_BOT_TOKEN environment variable'ı okunur ve configuration validation işleminden geçirilir.
+
+Startup validation:
+
+1. TELEGRAM_BOT_TOKEN değerinin mevcut olup olmadığını kontrol eder.
+
+2. Değerin beklenen Telegram bot token formatına uyup uymadığını kontrol eder.
+
+3. Configuration geçersizse uygulamanın normal runtime akışına başlamasını engeller.
+
+4. Hata durumunda non-zero exit code üretir.
+
+5. Token değerini stdout veya stderr çıktısına yazmaz.
+
+6. Token değerini exception mesajına veya loglara dahil etmez.
+
+Startup validation ile opsiyonel Telegram API validator farklı amaçlara sahiptir:
+
+**Startup validation**: Uygulamanın gerekli configuration ile başlatılabilmesini kontrol eder.
+
+**Token validator**: Token'ın Telegram Bot API tarafından kabul edilip edilmediğini getMe endpoint'i üzerinden kontrol eder.
+
+## 4. Optional Token Validator CLI
 
 Repository, token'ın Telegram Bot API tarafından kabul edilip edilmediğini kontrol etmek için non-persisting bir validator CLI içerir.
 
@@ -61,43 +88,76 @@ Repository, token'ın Telegram Bot API tarafından kabul edilip edilmediğini ko
 ```bash
 python -m tools.token_setup
 ```
-
-CLI yalnızca mevcut process environment'ındaki:
+CLI yalnızca mevcut process environment'ındaki şu değeri okur:
 
 ```text
 TELEGRAM_BOT_TOKEN
 ```
-
-değerini okur.
+Token command-line argümanı olarak verilmez.
 
 Validator:
-
 1. Environment variable'ın mevcut olup olmadığını kontrol eder.
-2. Token'ın yerel olarak tanınabilir Telegram token formatına uyup uymadığını kontrol eder.
-3. Telegram Bot API `getMe` endpoint'ine istek gönderir.
-4. Sonucu `VALID`, `INVALID` veya `UNAVAILABLE` olarak sınıflandırır.
-5. Token'ı hiçbir zaman stdout/stderr çıktısına yazmaz.
+
+2. Token'ın yerel formatını kontrol eder.
+
+3. Telegram Bot API getMe endpoint'ine istek gönderir.
+
+4. Yanıtı VALID, INVALID veya UNAVAILABLE olarak sınıflandırır.
+
+5. Token'ı stdout veya stderr çıktısına yazmaz.
+
 6. Token'ı dosyaya kaydetmez.
+
 7. Token'ı validation sonucunda saklamaz.
+
 8. Token'ı exception mesajına dahil etmez.
+
+9. Token dosyası oluşturmaz.
 
 CLI, token kurulumunun zorunlu bir parçası değildir. Deployment provider'ın secret/environment yönetimi canonical configuration kaynağı olmaya devam eder.
 
-## 4. Validation Results
+## 5. Validation Results
 
-Validator üç güvenli sonuç üretir.
+Validator üç sonuç üretir:
 
-### Valid
+VALID
 
-Telegram Bot API başarılı bir `getMe` yanıtı verdiğinde sonuç `VALID` olarak sınıflandırılır.
+INVALID
 
-Başarılı yanıt yalnızca HTTP `200` status code ile belirlenmez. Yanıtın JSON gövdesi:
+UNAVAILABLE
+
+Bu sınıflandırmalar ile CLI'nin kullanıcıya gösterdiği mesajlar birbirinden ayrıdır.
+
+### 5.1 Valid
+
+Telegram Bot API başarılı ve beklenen yapıya sahip bir getMe yanıtı verdiğinde sonuç VALID olarak sınıflandırılır.
+
+Başarılı yanıt yalnızca HTTP 200 status code ile belirlenmez. Yanıtın JSON gövdesi:
 
 * bir object/dictionary olmalı,
+
 * `ok` alanı boolean `true` olmalı,
+
 * `result` alanı bir object/dictionary olmalıdır.
 
+* `result.id` pozitif bir integer olmalıdır.
+
+* `result.is_bot` değeri true olmalıdır.
+
+* `result.first_name` boş olmayan bir string olmalıdır.
+
+* Varsa `result.username` boş olmayan bir string olmalıdır.
+
 Örnek olarak aşağıdaki yanıt başarılı kabul edilmez:
+
+```json
+{
+  "ok": true
+  "result": {}
+}
+```
+
+Aşağıdaki yanıt da başarılı kabul edilmez:
 
 ```json
 {
@@ -105,9 +165,9 @@ Başarılı yanıt yalnızca HTTP `200` status code ile belirlenmez. Yanıtın J
 }
 ```
 
-Bu tür bir yanıt `UNAVAILABLE` olarak sınıflandırılır.
+Bu tür malformed veya eksik yanıtlar `UNAVAILABLE` olarak sınıflandırılır. Çünkü bu yanıtlar token'ın geçersiz olduğunu kanıtlamaz; yalnızca beklenen Telegram API yanıtının alınamadığını gösterir.
 
-Başarılı sonuç mesajı:
+CLI başarı mesajı:
 
 ```text
 Telegram bot token is valid.
@@ -119,20 +179,22 @@ Process exit code:
 0
 ```
 
-Bu sonuç, Telegram'ın verilen token'ı kabul ettiğini gösterir.
+`VALID`, Telegram'ın verilen token'ı kabul ettiğini gösterir.
 
-### Invalid
+### 5.2 Invalid
 
 Aşağıdaki durumlarda token `INVALID` olarak sınıflandırılır:
 
-* Environment variable hiç sağlanmamışsa,
-* Token yerel format kontrolünden geçemiyorsa,
-* Telegram açıkça HTTP `401 Unauthorized` döndürüyorsa.
+* Token environment variable'ı eksikse.
 
-Sonuç:
+* Token yerel format kontrolünden geçemiyorsa.
+
+* Telegram Bot API açıkça HTTP 401 Unauthorized döndürüyorsa.
+
+CLI'nin geçersiz token mesajı:
 
 ```text
-invalid
+Telegram bot token is invalid.
 ```
 
 Process exit code:
@@ -141,28 +203,39 @@ Process exit code:
 1
 ```
 
+Burada `INVALID`, validator'ın iç sınıflandırmasıdır. Kullanıcıya gösterilen `Telegram bot token is invalid`. mesajı ise CLI sunum mesajıdır.
+
 HTTP `401 Unauthorized`, token'ın Telegram tarafından geçersiz kabul edildiğini gösteren açık bir kanıttır.
 
-### Unavailable
+### 5.3 Unavailable
 
 Aşağıdaki durumlarda token'ın kendisinin geçersiz olduğu sonucuna varılmaz:
 
 * Network bağlantı hatası,
-* timeout,
+
+* Timeout,
+
 * Telegram server hatası,
-* rate limiting,
-* beklenmeyen HTTP status code,
-* geçerli olmayan veya beklenmeyen JSON response,
+
+* Rate limiting,
+
+* Beklenmeyen HTTP status code,
+
+* Geçerli olmayan veya beklenmeyen JSON response,
+
 * HTTP `200` olup `ok` alanı `true` olmayan response,
+
 * HTTP `200` olup `result` alanı bulunmayan veya object olmayan response.
 
-Bu durumda:
+* HTTP `200` olup result alanı object olmayan response.
+
+* HTTP `200` olup result içindeki minimum Telegram user alanları eksik veya geçersiz olan response.
+
+CLI mesajı:
 
 ```text
 Telegram Bot API could not be reached or returned an unexpected response.
 ```
-
-mesajı verilir.
 
 Process exit code:
 
@@ -170,21 +243,46 @@ Process exit code:
 2
 ```
 
-HTTP `401` dışındaki beklenmeyen status code'lar `UNAVAILABLE` olarak sınıflandırılır. Örneğin HTTP `400`, `403`, `404`, `429` ve `5xx` yanıtları, kod tarafından açıkça `401` olarak değerlendirilmediği sürece `UNAVAILABLE` sonucuna gider.
+HTTP `401` dışındaki beklenmeyen status code'lar `UNAVAILABLE` olarak sınıflandırılır.
+
+Örneğin aşağıdaki yanıtlar token'ın geçersiz olduğunu tek başına kanıtlamaz:
+
+* HTTP `400`
+
+* HTTP `403`
+
+* HTTP `404`
+
+* HTTP `429`
+
+* HTTP `5xx`
 
 Bu ayrım önemlidir:
 
 ```text
-401 Unauthorized
-    → token geçersiz
+HTTP 401 Unauthorized
+    → token INVALID
 
-Network / timeout / server / unexpected response
+Network / timeout / server failure / malformed response
     → token'ın geçersiz olduğu kanıtlanmadı
+    → UNAVAILABLEmm
 ```
 
 Bir API outage veya network problemi yalnızca token problemi olarak raporlanmamalıdır.
 
-## 5. Non-Disclosure Rules
+6. Exit Code Contract
+
+CLI exit code değerleri:
+
+| Result | Exit Code | Meaning |
+| -------- | -------- | ----------- |
+| `VALID` | 0 | Token Telegram tarafından kabul edildi |
+| `INVALID`| 1 | Token eksik, format olarak geçersiz veya Telegram tarafından HTTP 401 ile reddedildi
+| `UNAVAILABLE`| 2 | Telegram API'ye ulaşılamadı veya beklenmeyen yanıt alındı
+
+Bu exit code değerleri CI/CD, deployment scriptleri veya operator automation tarafından kullanılabilir.
+
+## 7. Non-Disclosure Rules
 
 Validator'ın temel güvenlik sözleşmesi token değerinin disclosure edilmemesidir.
 
@@ -192,21 +290,23 @@ Token:
 
 * stdout'a yazılmaz.
 * stderr'a yazılmaz.
-* exception mesajına yazılmaz.
-* validation result içinde tutulmaz.
-* dosyaya yazılmaz.
+* Exception mesajına yazılmaz.
+* Validation result içinde tutulmaz.
+* Dosyaya yazılmaz.
 * CLI argümanı olarak alınmaz.
-* log mesajlarına dahil edilmez.
+* Log mesajlarına dahil edilmez.
+* Test çıktısına yazılmaz.
+* Repository dosyalarına yazılmaz.
 
-HTTP isteği oluşturulurken token, Telegram API isteğinin URL'sinde geçici olarak bulunabilir. Ancak bu URL hiçbir şekilde kullanıcıya gösterilmemeli, stdout/stderr çıktısına, exception mesajına, loglara, test sonuçlarına veya kalıcı dosya içeriğine aktarılmamalıdır.
+HTTP isteği oluşturulurken token, Telegram API isteğinin URL'sinde geçici olarak bulunabilir. Ancak bu URL kullanıcıya gösterilmemeli, stdout/stderr çıktısına, exception mesajına, loglara, test sonuçlarına veya kalıcı dosya içeriğine aktarılmamalıdır.
 
 Test suite bu davranışları özellikle doğrular.
 
-## 6. File Creation Contract
+## 8. File Creation Contract
 
 Validator herhangi bir token dosyası oluşturmaz.
 
-Özellikle aşağıdaki workflow canonical değildir:
+Aşağıdaki workflow canonical değildir:
 
 ```text
 token
@@ -222,7 +322,7 @@ Token'ın plaintext dosyada saklanması bu repository'nin configuration mimarisi
 
 Validator'ın amacı token'ı **saklamak değil, doğrulamaktır**.
 
-## 7. Deprecated Flask Token Setup
+## 9. Deprecated Flask Token Setup
 
 Eski Flask tabanlı token setup workflow'u canonical configuration kaynağı değildir.
 
@@ -251,15 +351,15 @@ Telegram getMe
 
 Eski Flask/token-file workflow'u yeni deployment'larda kullanılmamalıdır.
 
-Eski setup uygulamasının archive/delete işlemi, yeni canonical Render workflow'u production'da başarıyla doğrulandıktan sonra ve Software Captain onayıyla ayrı bir repository operasyonu olarak gerçekleştirilmelidir.
+Eski setup uygulamasının archive veya delete işlemi, yeni canonical deployment workflow'u production'da başarıyla doğrulandıktan sonra ve Software Captain onayıyla ayrı bir repository operasyonu olarak gerçekleştirilmelidir.
 
-## 8. Production Render Operations
+## 10. Production Render Operations
 
 Production'daki canonical secret workflow, repository'deki Flask/file-based token setup workflow'undan bağımsız olarak Render environment/secret yönetimi üzerinden yürütülür.
 
-### 8.1 Initial Secret Setup
+### 10.1 Initial Secret Setup
 
-Production Render service linked to this repository için:
+Production Render service için:
 
 1. Render Dashboard'da production service'i açın.
 2. `Environment` bölümüne gidin.
@@ -268,10 +368,11 @@ Production Render service linked to this repository için:
 5. Değişiklik için `Save and deploy` seçeneğini kullanın. Secret değişikliğinin deploy edilmeden production runtime'a uygulanacağı varsayılmamalıdır.
 6. Deploy tamamlandıktan sonra `Deploys` bölümünden ilgili deploy'un başarılı olduğunu doğrulayın.
 7. Service logs içinde token değerinin görünmediğini kontrol edin.
+8. Application startup validation'ın başarılı olduğunu doğrulayın.
 
-Render'daki environment variable değişiklikleri için `Save and deploy` mevcut build'i yeni environment değerleriyle yeniden deploy eder. `Save only` seçilirse yeni değer bir sonraki deploy'a kadar service tarafından kullanılmaz.
+Secret değişikliğinin production runtime'a ne zaman uygulanacağı Render service configuration ve deploy davranışına bağlıdır. Yeni değer production runtime'da kullanılmadan önce ilgili deploy'un tamamlandığı doğrulanmalıdır.
 
-### 8.2 Token Validation
+### 10.2 Token Validation
 
 Gerekirse token, controlled bir operator environment'ında non-persisting validator ile doğrulanabilir:
 
@@ -284,13 +385,13 @@ Validator token'ı yalnızca `TELEGRAM_BOT_TOKEN` process environment'ından oku
 Token:
 
 * command-line argument olarak verilmemelidir.
-* shell history'ye yazılmamalıdır.
-* source code'a veya repository dosyasına yazılmamalıdır.
-* loglara veya deployment çıktısına yazılmamalıdır.
+* Shell history'ye yazılmamalıdır.
+* Source code'a veya repository dosyasına yazılmamalıdır.
+* Loglara veya deployment çıktısına yazılmamalıdır.
 
 Production Render environment'ında token'ın kendisini loglamak veya ekrana çıkarmak yerine service'in başarılı şekilde deploy olup startup configuration validation'dan geçmesi doğrulanmalıdır.
 
-### 8.3 Secret Rotation
+### 10.3 Secret Rotation
 
 Telegram bot token'ının yenilenmesi, kimlik bilgisi değiştirme işlemidir. Uygulamanın deployment işlemini geri alma işlemiyle aynı işlem olarak değerlendirilmemelidir.
 
@@ -320,7 +421,7 @@ Yeni token'ı güncelleme ve deploy etme süreci hazır olmadan geçerli token i
 
 Bir token iptal edildikten sonra eski değer kullanılamaz kabul edilmelidir. Eski token'ın önceki bir deployment içinde bulunması, onu geçerli bir kurtarma seçeneğine dönüştürmez.
 
-### 8.4 Rollback
+### 10.4 Rollback
 
 Render deployment rollback işlemi ile Telegram token yenileme işlemi farklı işlemlerdir ve farklı güvenlik kurallarına sahiptir.
 
@@ -355,7 +456,7 @@ Environment Group ile ilgili hususlar:
 - Kontrol listesinde tam olarak bir canonical token source belirtilmelidir.
 - Servis değişkenleri, Environment Group, yerel yapılandırma ve deployment'a özel ayarlar arasında birbiriyle yarışan token değerleri bulunmamalıdır.
 
-### 8.5 Cutover from the Deprecated Workflow
+### 10.5 Cutover from the Deprecated Workflow
 
 Yeni canonical workflow production'da başarıyla doğrulanmadan eski Flask/file-based token setup workflow'u kaldırılmamalıdır.
 
@@ -371,7 +472,7 @@ Cutover sırası:
 
 Eski workflow, yeni canonical workflow başarıyla doğrulanmadan production'dan kaldırılmamalıdır.
 
-### 8.6 Production Secret Checklist
+### 11. Production Secret Checklist
 
 Her secret kurulumu veya rotation işleminden sonra:
 
@@ -388,7 +489,7 @@ Her secret kurulumu veya rotation işleminden sonra:
 * [ ] İptal edilmiş eski token'ın rollback için kullanılmayacağı doğrulandı.
 * [ ] Yeni token'ın canonical secret source içinde açıkça uygulandığı ve doğrulandığı kontrol edildi.
 
-### 8.7 Protection of Confidential Information
+### 12 Protection of Confidential Information
 
 Gerçek Telegram bot token'ı aşağıdaki alanların hiçbirinde bulunmamalıdır:
 
@@ -411,7 +512,7 @@ Yalnızca token'ı açığa çıkarmayan, maskelenmiş durum bilgileri ve doğru
 
 Token yalnızca onaylanmış secret-management arayüzü üzerinden veya yerel doğrulama işlemi açıkça gerektiriyorsa process environment aracılığıyla girilmelidir.
 
-## 9. Production Setup Checklist
+## 13. Production Setup Checklist
 
 Production deployment öncesinde:
 
@@ -425,7 +526,7 @@ Production deployment öncesinde:
 * [ ] Validator çıktısında token değeri bulunmadığı kontrol edildi.
 * [ ] Eski Flask/token-file setup workflow'u production configuration kaynağı olarak kullanılmıyor.
 
-## 10. Local Validation
+## 14. Local Validation
 
 Local validation yapılacaksa validator process environment'ındaki `TELEGRAM_BOT_TOKEN` değerini kullanır.
 
@@ -441,25 +542,62 @@ Validator bu kullanım şeklini desteklemez.
 
 Token, process environment üzerinden sağlanmalıdır.
 
-Windows, Linux veya CI/CD ortamında environment variable'ın nasıl tanımlanacağı kullanılan shell, IDE veya deployment provider'a göre değişebilir. Önemli olan token'ın process environment'a secret olarak aktarılması ve command-line/history, source code veya repository dosyalarına yazılmamasıdır.
+**Windows PowerShell**
+```powershell
+$env:TELEGRAM_BOT_TOKEN = "123456789:example"
+python -m tools.token_setup
+```
 
-## 11. Verification
+**Windows CMD**
+```cmd
+set TELEGRAM_BOT_TOKEN=123456789:example
+python -m tools.token_setup
+```
+
+**Linux/macOs**
+```bash
+export TELEGRAM_BOT_TOKEN="123456789:example"
+python -m tools.token_setup
+```
+
+Yukarıdaki token yalnızca örnektir. Gerçek token'ı sohbetlere, issue'lara, commit'lere veya ekran görüntülerine yazmayın.
+
+Validation tamamlandıktan sonra local shell session'ındaki environment variable temizlenebilir.
+
+## Verification and Quality Gate
+
+Token setup değişikliklerinden sonra repository quality gate çalıştırılmalıdır:
 
 Token setup değişikliklerinden sonra repository quality gate çalıştırılmalıdır:
 
 ```bash
-ruff check .
-ruff format --check .
-pytest -v
+python -m pytest -q
 ```
 
-Beklenen sonuç:
+Projede Ruff quality gate'i etkinse ayrıca:
 
-* Ruff lint başarılı.
-* Ruff format kontrolü başarılı.
-* Token setup testleri başarılı.
+```bash
+ruff check .
+ruff format --check .
+```
+
+Beklenen sonuçlar:
+
+* Token validator testleri başarılı.
+
+* CLI testleri başarılı.
+
+* Startup validation testleri başarılı.
+
 * Packaging testleri başarılı.
+
+* Telegram testleri başarılı.
+
 * Full test suite başarısız olmamalı.
+
+* Token disclosure testi başarısız olmamalı.
+
+* Token persistence testi başarısız olmamalı.
 
 Packaging ve end-to-end testleri validator'ın kurulu wheel üzerinden çalıştırılmasını doğrular.
 
@@ -471,18 +609,48 @@ Testler ayrıca:
 * Repository root path'inin çıktıya sızmadığını,
 * CLI çalışırken token dosyası oluşturulmadığını,
 * Geçici çalışma dizininin işlem sonrasında boş kaldığını,
-* Network, unauthorized ve malformed response senaryolarının birbirinden doğru şekilde ayrıldığını
+* Network, unauthorized ve malformed response senaryolarının birbirinden doğru şekilde ayrıldığını,
+* HTTP `200` olup eksik veya malformed result içeren yanıtların `UNAVAILABLE` olması.
+* HTTP `401` yanıtının `INVALID` olması.
 
 doğrular.
 
 Token validator'ın davranışı özellikle aşağıdaki sözleşmelerle korunur:
 
-* valid token → `VALID`
-* explicit HTTP 401 → `INVALID`
-* network/provider failure → `UNAVAILABLE`
-* malformed successful HTTP response → `UNAVAILABLE`
-* unexpected HTTP response → `UNAVAILABLE`
-* token disclosure → yasak
-* token persistence → yasak
-* token file creation → yasak
-* CLI token argument → desteklenmez
+```text
+valid token
+    → VALID
+    → exit code 0
+
+explicit HTTP 401
+    → INVALID
+    → exit code 1
+
+missing or locally malformed token
+    → INVALID
+    → exit code 1
+
+network/provider failure
+    → UNAVAILABLE
+    → exit code 2
+
+malformed successful HTTP response
+    → UNAVAILABLE
+    → exit code 2
+
+unexpected HTTP response
+    → UNAVAILABLE
+    → exit code 2
+
+token disclosure
+    → forbidden
+
+token persistence
+    → forbidden
+
+token file creation
+    → forbidden
+
+CLI token argument
+    → unsupported
+```

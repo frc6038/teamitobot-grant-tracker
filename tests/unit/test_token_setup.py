@@ -33,7 +33,15 @@ def test_validate_token_returns_valid_for_successful_get_me(
 ) -> None:
     response = Mock()
     response.status_code = 200
-    response.json.return_value = {"ok": True, "result": {"is_bot": True}}
+    response.json.return_value = {
+        "ok": True,
+        "result": {
+            "id": 123456789,
+            "is_bot": True,
+            "first_name": "Ä°TOBOT",
+            "username": "itobot_bot",
+        },
+    }
 
     get = Mock(return_value=response)
     monkeypatch.setattr(requests, "get", get)
@@ -126,6 +134,68 @@ def test_validate_token_returns_unavailable_when_success_payload_has_no_result(
 
     assert result.status is ValidationStatus.UNAVAILABLE
 
+def test_validate_token_returns_unavailable_for_empty_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "ok": True,
+        "result": {},
+    }
+
+    get = Mock(return_value=response)
+    monkeypatch.setattr(validator.requests, "get", get)
+
+    result = validate_token(VALID_TOKEN)
+
+    assert result.status is ValidationStatus.UNAVAILABLE
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        None,
+        [],
+        "not-a-user",
+        {"is_bot": True},
+        {"id": 123456789, "is_bot": True},
+        {"id": 123456789, "first_name": "Ä°TOBOT"},
+        {
+            "id": 123456789,
+            "is_bot": False,
+            "first_name": "Ä°TOBOT",
+        },
+        {
+            "id": 123456789,
+            "is_bot": True,
+            "first_name": "",
+        },
+        {
+            "id": 123456789,
+            "is_bot": True,
+            "first_name": "Ä°TOBOT",
+            "username": 12345,
+        },
+    ],
+)
+def test_validate_token_returns_unavailable_for_malformed_telegram_user(
+    monkeypatch: pytest.MonkeyPatch,
+    result: object,
+) -> None:
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "ok": True,
+        "result": result,
+    }
+
+    get = Mock(return_value=response)
+    monkeypatch.setattr(validator.requests, "get", get)
+
+    validation_result = validate_token(VALID_TOKEN)
+
+    assert validation_result.status is ValidationStatus.UNAVAILABLE
+
 
 def test_validate_token_returns_unavailable_for_unsuccessful_payload(
     monkeypatch: pytest.MonkeyPatch,
@@ -149,7 +219,12 @@ def test_validate_token_does_not_store_token_in_result(
     response.status_code = 200
     response.json.return_value = {
         "ok": True,
-        "result": {"is_bot": True},
+        "result": {
+            "id": 123456789,
+            "is_bot": True,
+            "first_name": "Ä°TOBOT",
+            "username": "itobot_bot",
+        },
     }
 
     monkeypatch.setattr(requests, "get", Mock(return_value=response))

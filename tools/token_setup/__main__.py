@@ -1,85 +1,47 @@
-"""Command-line interface for non-persisting Telegram token validation."""
+"""Module entry point for the Telegram token setup CLI."""
 
 from __future__ import annotations
 
-import os
-import re
-import sys
-from typing import Final
+from . import cli
+from .validator import validate_token
 
-from .validator import (
-    TELEGRAM_BOT_TOKEN_ENV,
-    ValidationStatus,
-    validate_token,
-)
+EXIT_INVALID = cli.EXIT_INVALID
+EXIT_UNAVAILABLE = cli.EXIT_UNAVAILABLE
+EXIT_VALID = cli.EXIT_VALID
 
-EXIT_VALID: Final = 0
-EXIT_INVALID: Final = 1
-EXIT_UNAVAILABLE: Final = 2
+MESSAGE_ARGUMENTS = cli.MESSAGE_ARGUMENTS
+MESSAGE_FORMAT = cli.MESSAGE_FORMAT
+MESSAGE_INVALID = cli.MESSAGE_INVALID
+MESSAGE_MISSING = cli.MESSAGE_MISSING
+MESSAGE_UNAVAILABLE = cli.MESSAGE_UNAVAILABLE
+MESSAGE_VALID = cli.MESSAGE_VALID
+TOKEN_PATTERN = cli.TOKEN_PATTERN
 
-# Telegram bot tokens currently use the form:
-# <bot-id>:<secret>
-# The exact secret length is intentionally not enforced because Telegram
-# controls the token format and may change it independently of this tool.
-TOKEN_PATTERN: Final = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
-
-MESSAGE_VALID: Final = "Telegram bot token is valid."
-MESSAGE_INVALID: Final = "Telegram bot token is invalid."
-MESSAGE_UNAVAILABLE: Final = (
-    "Telegram Bot API could not be reached or returned an unexpected response."
-)
-MESSAGE_MISSING: Final = f"{TELEGRAM_BOT_TOKEN_ENV} is not set in the environment."
-MESSAGE_FORMAT: Final = (
-    f"{TELEGRAM_BOT_TOKEN_ENV} does not have a valid Telegram bot token format."
-)
-MESSAGE_ARGUMENTS: Final = (
-    "Unexpected command-line arguments are not supported; "
-    "set TELEGRAM_BOT_TOKEN in the environment instead."
-)
-
-
-def _read_token() -> str | None:
-    """Read the token from the canonical process environment."""
-    token = os.environ.get(TELEGRAM_BOT_TOKEN_ENV)
-
-    if token is None:
-        return None
-
-    return token.strip()
-
-
-def _has_valid_format(token: str) -> bool:
-    """Check the locally recognizable structure of a Telegram bot token."""
-    return bool(TOKEN_PATTERN.fullmatch(token))
+_has_valid_format = cli._has_valid_format
+_read_token = cli._read_token
 
 
 def main() -> int:
-    """Run token validation and return a process exit code."""
-    if len(sys.argv) != 1:
-        print(MESSAGE_ARGUMENTS, file=sys.stderr)
-        return EXIT_INVALID
-    token = _read_token()
+    """Run the CLI using this module's validator reference."""
+    return cli.main(validate_token_func=validate_token)
 
-    if token is None or not token:
-        print(MESSAGE_MISSING, file=sys.stderr)
-        return EXIT_INVALID
 
-    if not _has_valid_format(token):
-        print(MESSAGE_FORMAT, file=sys.stderr)
-        return EXIT_INVALID
-
-    result = validate_token(token)
-
-    if result.status is ValidationStatus.VALID:
-        print(MESSAGE_VALID)
-        return EXIT_VALID
-
-    if result.status is ValidationStatus.INVALID:
-        print(MESSAGE_INVALID, file=sys.stderr)
-        return EXIT_INVALID
-
-    print(MESSAGE_UNAVAILABLE, file=sys.stderr)
-    return EXIT_UNAVAILABLE
+__all__ = [
+    "EXIT_INVALID",
+    "EXIT_UNAVAILABLE",
+    "EXIT_VALID",
+    "MESSAGE_ARGUMENTS",
+    "MESSAGE_FORMAT",
+    "MESSAGE_INVALID",
+    "MESSAGE_MISSING",
+    "MESSAGE_UNAVAILABLE",
+    "MESSAGE_VALID",
+    "TOKEN_PATTERN",
+    "_has_valid_format",
+    "_read_token",
+    "main",
+    "validate_token",
+]
 
 
 if __name__ == "__main__":
