@@ -373,45 +373,6 @@ def test_successful_response_requires_status_200():
     assert not _is_successful_get_me_response(response)
 
 
-def test_unknown_test_mode_does_not_make_real_request(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv(
-        "TOKEN_SETUP_TEST_RESPONSE",
-        "unknown-mode",
-    )
-
-    with patch(
-        "tools.token_setup.validator.requests.get",
-    ) as mocked_get:
-        result = validate_token(SECRET_TOKEN)
-
-    assert result.status is ValidationStatus.UNAVAILABLE
-    mocked_get.assert_not_called()
-
-
-def test_test_hook_is_ignored_outside_test_environment(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv(
-        "TOKEN_SETUP_TEST_RESPONSE",
-        "valid",
-    )
-
-    response = _response(
-        401,
-        {
-            "ok": False,
-        },
-    )
-
-    with patch(
-        "tools.token_setup.validator.requests.get",
-        return_value=response,
-    ):
-        result = validate_token(SECRET_TOKEN)
-
-    assert result.status is ValidationStatus.INVALID
-
-
 def test_request_does_not_follow_redirects():
     response = _response(
         200,

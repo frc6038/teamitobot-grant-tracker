@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -13,9 +12,6 @@ import requests
 TELEGRAM_BOT_TOKEN_ENV: Final = "TELEGRAM_BOT_TOKEN"
 TELEGRAM_API_BASE_URL: Final = "https://api.telegram.org"
 TELEGRAM_REQUEST_TIMEOUT_SECONDS: Final = 10
-
-TEST_ENVIRONMENT: Final = "test"
-TEST_RESPONSE_ENV: Final = "TOKEN_SETUP_TEST_RESPONSE"
 
 TOKEN_PATTERN: Final = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
 
@@ -98,33 +94,6 @@ def _is_successful_get_me_response(response: requests.Response) -> bool:
     return _is_valid_telegram_user(payload.get("result"))
 
 
-def _get_test_response() -> ValidationResult | None:
-    """Return a configured fake result only in the test environment."""
-    if os.getenv("ENVIRONMENT") != TEST_ENVIRONMENT:
-        return None
-
-    mode = os.getenv(TEST_RESPONSE_ENV)
-
-    if mode is None:
-        return None
-
-    if mode == "valid":
-        return ValidationResult(ValidationStatus.VALID)
-
-    if mode == "unauthorized":
-        return ValidationResult(ValidationStatus.INVALID)
-
-    if mode in {
-        "network",
-        "rate-limited",
-        "server-error",
-        "malformed",
-    }:
-        return ValidationResult(ValidationStatus.UNAVAILABLE)
-
-    return ValidationResult(ValidationStatus.UNAVAILABLE)
-
-
 def validate_token(token: str) -> ValidationResult:
     """Validate a Telegram bot token using the getMe endpoint."""
     if not isinstance(token, str):
@@ -137,11 +106,6 @@ def validate_token(token: str) -> ValidationResult:
 
     if not has_valid_token_format(normalized_token):
         return ValidationResult(ValidationStatus.INVALID)
-
-    test_result = _get_test_response()
-
-    if test_result is not None:
-        return test_result
 
     try:
         response = requests.get(
