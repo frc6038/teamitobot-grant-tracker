@@ -564,7 +564,7 @@ Yukarıdaki token yalnızca örnektir. Gerçek token'ı sohbetlere, issue'lara, 
 
 Validation tamamlandıktan sonra local shell session'ındaki environment variable temizlenebilir.
 
-## Verification and Quality Gate
+## 15. Verification and Quality Gate
 
 Token setup değişikliklerinden sonra repository quality gate çalıştırılmalıdır:
 

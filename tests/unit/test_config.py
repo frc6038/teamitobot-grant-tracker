@@ -175,7 +175,7 @@ def test_cross_field_backoff_and_lease_constraints() -> None:
 def test_environment_overrides_local_dotenv(tmp_path: Path) -> None:
     dotenv_path = tmp_path / ".env"
     dotenv_path.write_text(
-        "TELEGRAM_BOT_TOKEN=file-token\n"
+        "TELEGRAM_BOT_TOKEN=123456789:file-token\n"
         "DATABASE_URL=postgresql://file:file@file.invalid/file\n"
         "CHECK_INTERVAL=120\n",
         encoding="utf-8",
@@ -198,7 +198,7 @@ def test_environment_overrides_local_dotenv(tmp_path: Path) -> None:
 def test_local_dotenv_fills_missing_development_values(tmp_path: Path) -> None:
     dotenv_path = tmp_path / ".env"
     dotenv_path.write_text(
-        "TELEGRAM_BOT_TOKEN=file-token\n"
+        "TELEGRAM_BOT_TOKEN=123456789:file-token\n"
         "DATABASE_URL=postgresql://file:file@file.invalid/file\n",
         encoding="utf-8",
     )
@@ -208,7 +208,7 @@ def test_local_dotenv_fills_missing_development_values(tmp_path: Path) -> None:
         dotenv_path=dotenv_path,
     )
 
-    assert settings.telegram_bot_token == "file-token"
+    assert settings.telegram_bot_token == "123456789:file-token"
     assert settings.database_url.endswith("@file.invalid/file")
 
 

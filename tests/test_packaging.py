@@ -383,7 +383,7 @@ def test_clean_runtime_install_excludes_dev_tools_and_imports(tmp_path):
 
     env = {
         **os.environ,
-        "TELEGRAM_BOT_TOKEN": "dummy-token",
+        "TELEGRAM_BOT_TOKEN": "123456789:dummy-token",
         "DATABASE_URL": ("postgresql://user:pass@127.0.0.1:1/itobot_test"),
     }
 

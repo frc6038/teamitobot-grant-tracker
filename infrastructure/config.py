@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 DEFAULT_GRANT_URL = (
     "https://www.firstinspires.org/programs/team-grant-opportunities"
 )
+_TELEGRAM_BOT_TOKEN_PATTERN = re.compile(r"^\d+:[A-Za-z0-9_-]+$")
 _RELEASE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,127}\Z")
 _EnumT = TypeVar("_EnumT", bound=Enum)
 
@@ -112,7 +113,7 @@ class Settings:
 
     def __post_init__(self) -> None:
         problems: list[ConfigurationProblem] = []
-        _validate_secret(problems, "TELEGRAM_BOT_TOKEN", self.telegram_bot_token)
+        _validate_telegram_bot_token(problems, self.telegram_bot_token)
         _validate_secret(problems, "DATABASE_URL", self.database_url)
         _validate_database_url(problems, self.database_url)
 
@@ -250,6 +251,28 @@ class Settings:
                 "log_level": self.log_level.value,
                 "polling_backlog_policy": self.polling_backlog_policy.value,
             }
+        )
+
+
+def _validate_telegram_bot_token(
+    problems: list[ConfigurationProblem],
+    value: object,
+) -> None:
+    if not isinstance(value, str) or not value or value != value.strip():
+        problems.append(
+            ConfigurationProblem(
+                "TELEGRAM_BOT_TOKEN",
+                "is required",
+            )
+        )
+        return
+
+    if not _TELEGRAM_BOT_TOKEN_PATTERN.fullmatch(value):
+        problems.append(
+            ConfigurationProblem(
+                "TELEGRAM_BOT_TOKEN",
+                "has an invalid format",
+            )
         )
 
 

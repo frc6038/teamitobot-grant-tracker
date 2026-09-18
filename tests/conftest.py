@@ -10,7 +10,7 @@ from tests.fakes.telegram_fakes import FakeApplication, FakeContext, FakeUpdate
 
 # These values intentionally replace ambient credentials before application imports.
 # The reserved .invalid host cannot resolve to a production or staging database.
-os.environ["TELEGRAM_BOT_TOKEN"] = "test-token-not-a-real-credential"
+os.environ["TELEGRAM_BOT_TOKEN"] = "123456789:dummy-token"
 os.environ["DATABASE_URL"] = "postgresql://test:test@database.invalid:5432/itobot_test"
 os.environ["ENVIRONMENT"] = "test"
 
