@@ -132,30 +132,99 @@ Bundan sonra yeni FRC hibe fırsatları bulunduğunda Telegram üzerinden bildir
 ### Canonical runtime configuration
 
 Uygulama ayarları tek bir immutable settings nesnesi olarak startup sırasında
-oluşturulur. Kaynak önceliği `process environment > local .env > varsayılanlar`
-şeklindedir. `.env` yalnız `development` modunda okunur; `test`, `staging` ve
-`production` secret ve ayarları explicit process/deployment environment'ından
-alınır. Güncel local şablon [`.env.example`](.env.example) dosyasıdır.
+oluşturulur. Secret değerleri uygulamaya **process environment** veya deployment
+provider'ın secret/environment yönetimi üzerinden sağlanır.
 
-| Değişken | Sözleşme / varsayılan |
-| --- | --- |
-| `TELEGRAM_BOT_TOKEN` | Zorunlu secret |
-| `DATABASE_URL` | Zorunlu PostgreSQL URL'si; secret olarak saklanır |
-| `ENVIRONMENT` | `development`, `test`, `staging`, `production`; varsayılan `development` |
-| `RELEASE_ID` | 1–128 karakterli release/build kimliği; varsayılan `local` |
-| `CHECK_INTERVAL` | `1..86400` saniye; varsayılan `900` |
-| `PORT` | `1..65535`; test modunda `0` da kabul edilir; varsayılan `8080` |
-| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; varsayılan `INFO` |
-| `GRANT_URL` | Absolute HTTP(S) provider adresi |
-| `PROVIDER_TIMEOUT`, `TELEGRAM_TIMEOUT`, `DATABASE_TIMEOUT` | `0.1..300` saniye |
-| `POLLING_BACKLOG_POLICY` | `process` veya `discard`; varsayılan `process` |
-| `OUTBOX_MAX_ATTEMPTS` | `1..100`; varsayılan `5` |
-| `OUTBOX_BASE_BACKOFF`, `OUTBOX_MAX_BACKOFF` | Pozitif retry aralıkları; max değeri base'den küçük olamaz |
-| `OUTBOX_LEASE_SECONDS` | `1..86400`; Telegram timeout'undan büyük olmalıdır |
+`TELEGRAM_BOT_TOKEN` için canonical akış:
+
+```text
+Telegram / BotFather
+        │
+        ▼
+Deployment Provider / Secret Store
+        │
+        ▼
+TELEGRAM_BOT_TOKEN
+(process environment)
+        │
+        ▼
+Application Bootstrap
+        │
+        ▼
+Typed Settings
+```
+
+Production ortamında `TELEGRAM_BOT_TOKEN` ve `DATABASE_URL` gibi secret değerleri
+repository'ye, source code'a veya dosya tabanlı token yapılandırmasına yazılmamalıdır.
+
+Yerel geliştirme ortamında `.env` kullanılabilir. `.env` yalnızca `development`
+ortamı içindir ve bootstrap sırasında okunur. `test`, `staging` ve `production`
+ortamlarında secret ve ayarlar explicit process/deployment environment üzerinden
+sağlanır.
+
+Güncel local şablon [`.env.example`](.env.example) dosyasıdır.
+
+| Değişken                                                   | Sözleşme / varsayılan                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `TELEGRAM_BOT_TOKEN`                                       | Zorunlu secret                                                           |
+| `DATABASE_URL`                                             | Zorunlu PostgreSQL URL'si; secret olarak saklanır                        |
+| `ENVIRONMENT`                                              | `development`, `test`, `staging`, `production`; varsayılan `development` |
+| `RELEASE_ID`                                               | 1–128 karakterli release/build kimliği; varsayılan `local`               |
+| `CHECK_INTERVAL`                                           | `1..86400` saniye; varsayılan `900`                                      |
+| `PORT`                                                     | `1..65535`; test modunda `0` da kabul edilir; varsayılan `8080`          |
+| `LOG_LEVEL`                                                | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; varsayılan `INFO`       |
+| `GRANT_URL`                                                | Absolute HTTP(S) provider adresi                                         |
+| `PROVIDER_TIMEOUT`, `TELEGRAM_TIMEOUT`, `DATABASE_TIMEOUT` | `0.1..300` saniye                                                        |
+| `POLLING_BACKLOG_POLICY`                                   | `process` veya `discard`; varsayılan `process`                           |
+| `OUTBOX_MAX_ATTEMPTS`                                      | `1..100`; varsayılan `5`                                                 |
+| `OUTBOX_BASE_BACKOFF`, `OUTBOX_MAX_BACKOFF`                | Pozitif retry aralıkları; max değeri base'den küçük olamaz               |
+| `OUTBOX_LEASE_SECONDS`                                     | `1..86400`; Telegram timeout'undan büyük olmalıdır                       |
 
 Eksik veya geçersiz yapılandırma, herhangi bir secret değerini stdout/stderr'a
 yazmadan değişken adını raporlar ve process'i kaynaklar başlatılmadan non-zero
 exit ile durdurur.
+
+#### Telegram token doğrulama
+
+Token'ın Telegram tarafından kabul edilip edilmediğini kontrol etmek için
+repository içerisinde **opsiyonel, non-persisting bir validator CLI** bulunur:
+
+```bash
+python -m tools.token_setup
+```
+
+Validator token'ı yalnızca `TELEGRAM_BOT_TOKEN` process environment değişkeninden
+okur. Token'ı dosyaya yazmaz, stdout/stderr'a yazmaz, exception veya sonuç
+nesnesinde saklamaz ve token'ı command-line argument olarak kabul etmez.
+
+Sonuçlar process exit code ile ayrılır:
+
+| Exit code | Sonuç       | Anlamı                                                                                                    |
+| --------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| `0`       | Valid       | Telegram `getMe` isteğini başarıyla kabul etti                                                            |
+| `1`       | Invalid / Usage error | Token eksik, formatı geçersiz, Telegram `401 Unauthorized` döndürdü veya beklenmeyen CLI argümanı kullanıldı |
+| `2`       | Unavailable | Network/timeout, rate limit, server error veya beklenmeyen provider cevabı nedeniyle doğrulama yapılamadı |
+
+Özellikle `getMe` isteğinin kullanılamaması ile token'ın geçersiz olması aynı
+durum değildir. Network hatası, timeout, rate limit, server error veya beklenmeyen
+bir provider cevabı token'ın geçersiz olduğunu kanıtlamaz ve `unavailable` olarak
+sınıflandırılır.
+
+Validator'ın ayrıntılı kullanım ve operasyon akışı için
+[`docs/operations/token-setup.md`](docs/operations/token-setup.md) dokümanına bakın.
+
+#### Deprecated token setup workflow
+
+Eski Flask tabanlı token setup uygulaması ve plaintext token dosyası artık
+canonical configuration source değildir.
+
+Uygulama token'ı Flask arayüzünden veya token JSON dosyasından okumaz. Production
+ortamında token yalnızca provider secret/environment yönetimi üzerinden
+sağlanmalıdır.
+
+Eski setup uygulamasının archive/delete işlemi bu değişikliğin dışında ayrı bir
+repository kararıdır. Yeni kurulumlarda Flask/file-based token workflow
+kullanılmamalıdır.
 
 ### SMTP operasyon konfigürasyonu
 
@@ -163,14 +232,14 @@ v0.2.0 — Operational Grant Notifications sürümünde SMTP kanalı opsiyoneldi
 yalnız runtime environment üzerinden yapılandırılır. Aşağıdaki altı değişken birlikte
 sağlanmalıdır; değerlerini source code'a veya repository'ye yazmayın:
 
-| Değişken | Açıklama |
-| --- | --- |
-| `SMTP_HOST` | SMTP provider host adı |
-| `SMTP_PORT` | Provider'ın güvenli SMTP portu (`587` veya `465` gibi) |
-| `SMTP_USERNAME` | SMTP kullanıcı adı |
-| `SMTP_PASSWORD` | SMTP parolası; provider secret store'da tutulur |
-| `SMTP_FROM` | Gönderen e-posta adresi |
-| `SMTP_TO` | Virgülle ayrılabilen alıcı adresleri |
+| Değişken        | Açıklama                                               |
+| --------------- | ------------------------------------------------------ |
+| `SMTP_HOST`     | SMTP provider host adı                                 |
+| `SMTP_PORT`     | Provider'ın güvenli SMTP portu (`587` veya `465` gibi) |
+| `SMTP_USERNAME` | SMTP kullanıcı adı                                     |
+| `SMTP_PASSWORD` | SMTP parolası; provider secret store'da tutulur        |
+| `SMTP_FROM`     | Gönderen e-posta adresi                                |
+| `SMTP_TO`       | Virgülle ayrılabilen alıcı adresleri                   |
 
 Opsiyonel `SMTP_SECURITY`, güvenli varsayılan olan `STARTTLS` değerini kullanır.
 Implicit TLS isteyen provider'lar için `SSL` olarak ayarlanmalıdır. Plaintext modu

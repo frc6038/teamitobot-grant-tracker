@@ -10,7 +10,7 @@ def test_config_imports():
     config_module = importlib.import_module("config")
 
     assert os.environ["ENVIRONMENT"] == "test"
-    assert config_module.config.BOT_TOKEN == "test-token-not-a-real-credential"
+    assert config_module.config.BOT_TOKEN == "123456789:dummy-token"
     assert config_module.config.DATABASE_URL.endswith(
         "@database.invalid:5432/itobot_test"
     )

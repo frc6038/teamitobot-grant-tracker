@@ -16,7 +16,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BOT_SCRIPT = os.path.join(REPO_ROOT, "bot.py")
 
 BASE_ENV = {
-    "TELEGRAM_BOT_TOKEN": "dummy-token",
+    "TELEGRAM_BOT_TOKEN": "123456789:dummy-token",
     "DATABASE_URL": "postgresql://itobot:supersecretpw@127.0.0.1:1/itobot_test",
     "CHECK_INTERVAL": "900",
     "PORT": "0",
@@ -58,6 +58,23 @@ def test_missing_bot_token_exits_nonzero_without_leaking_other_secrets(tmp_path)
     assert result.returncode != 0
     assert "TELEGRAM_BOT_TOKEN" in result.stderr
     assert "supersecretpw" not in result.stderr
+
+
+def test_malformed_bot_token_exits_nonzero_without_leaking_token(tmp_path):
+    malformed_token = "not-a-valid-token"
+
+    result = run_python(
+        ["-c", "import config"],
+        make_env(TELEGRAM_BOT_TOKEN=malformed_token),
+        tmp_path,
+    )
+
+    combined_output = result.stdout + result.stderr
+
+    assert result.returncode != 0
+    assert "TELEGRAM_BOT_TOKEN" in result.stderr
+    assert malformed_token not in combined_output
+    assert "supersecretpw" not in combined_output
 
 
 def test_missing_database_url_exits_nonzero(tmp_path):
@@ -147,8 +164,8 @@ def test_database_connection_failure_currently_exits_zero(tmp_path):
 
     result = run_python([BOT_SCRIPT], make_env(), tmp_path)
 
-    assert "Fatal error" in result.stdout
-    assert result.returncode == 0
+    assert "Fatal error" in result.stderr
+    assert result.returncode != 0
 
 
 def test_health_server_survives_port_already_in_use(tmp_path):

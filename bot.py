@@ -751,12 +751,14 @@ async def main():
             await stop_event.wait()
 
         except asyncio.CancelledError:
-
             print("🛑 Main task cancelled.")
+            raise
 
-        except Exception as e:
-
-            print(f"❌ Main application error: {e}")
+        except Exception as error:
+            print(
+                f"❌ Main application error: {type(error).__name__}"
+            )
+            raise
 
         finally:
 
@@ -808,15 +810,15 @@ async def main():
 # ==========================================
 
 if __name__ == "__main__":
-
     try:
-
         asyncio.run(main())
 
     except KeyboardInterrupt:
-
         print("\n🛑 Bot stopped by keyboard interrupt.")
 
-    except Exception as e:
-
-        print(f"❌ Fatal error: {e}")
+    except Exception as error:
+        print(
+            f"❌ Fatal error: {type(error).__name__}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)

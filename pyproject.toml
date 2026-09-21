@@ -31,4 +31,4 @@ dev = [
 py-modules = ["bot", "config", "database", "scraper", "smtp_notifier"]
 
 [tool.setuptools.packages.find]
-include = ["domain*", "adapters*", "infrastructure*"]
+include = ["domain*", "adapters*", "infrastructure*", "tools*"]
