@@ -33,7 +33,6 @@ EXPECTED_MODULES = (
 )
 
 CLEAN_INSTALL_TIMEOUT = 240
-TEST_ENVIRONMENT = "test"
 
 
 def _build_and_install_wheel(tmp_path):
@@ -80,13 +79,15 @@ def _build_and_install_wheel(tmp_path):
     return python
 
 
-def _run_installed_token_setup(python, cwd, env):
+def _run_installed_token_setup(python, cwd, env, response_mode):
     script = r"""
-import os
 import runpy
 import sys
 
 import requests
+
+
+response_mode = sys.argv[1]
 
 
 class FakeResponse:
@@ -102,12 +103,10 @@ class FakeResponse:
 
 
 def fake_get(*args, **kwargs):
-    mode = os.environ["TOKEN_SETUP_TEST_RESPONSE"]
-
-    if mode == "network":
+    if response_mode == "network":
         raise requests.RequestException("simulated provider failure")
 
-    if mode == "unauthorized":
+    if response_mode == "unauthorized":
         return FakeResponse(
             401,
             {
@@ -115,7 +114,7 @@ def fake_get(*args, **kwargs):
             },
         )
 
-    if mode == "malformed":
+    if response_mode == "malformed":
         return FakeResponse(
             200,
             {
@@ -123,7 +122,7 @@ def fake_get(*args, **kwargs):
             },
         )
 
-    if mode == "rate-limited":
+    if response_mode == "rate-limited":
         return FakeResponse(
             429,
             {
@@ -131,7 +130,7 @@ def fake_get(*args, **kwargs):
             },
         )
 
-    if mode == "server-error":
+    if response_mode == "server-error":
         return FakeResponse(
             500,
             {
@@ -139,7 +138,7 @@ def fake_get(*args, **kwargs):
             },
         )
 
-    if mode == "valid":
+    if response_mode == "valid":
         return FakeResponse(
             200,
             {
@@ -153,7 +152,7 @@ def fake_get(*args, **kwargs):
             },
         )
 
-    raise AssertionError(f"unknown test mode: {mode}")
+    raise AssertionError(f"unknown test mode: {response_mode}")
 
 
 requests.get = fake_get
@@ -164,7 +163,7 @@ runpy.run_module("tools.token_setup", run_name="__main__")
 """
 
     return subprocess.run(
-        [str(python), "-c", script],
+        [str(python), "-c", script, response_mode],
         cwd=cwd,
         env=env,
         capture_output=True,
@@ -475,7 +474,6 @@ def test_clean_wheel_install_runs_token_setup_outside_source_tree(tmp_path):
 
         scenario_env = {
             **os.environ,
-            "ENVIRONMENT": TEST_ENVIRONMENT,
             "TELEGRAM_BOT_TOKEN": token,
         }
 
@@ -489,12 +487,11 @@ def test_clean_wheel_install_runs_token_setup_outside_source_tree(tmp_path):
                 timeout=30,
             )
         else:
-            scenario_env["TOKEN_SETUP_TEST_RESPONSE"] = response_mode
-
             result = _run_installed_token_setup(
                 python,
                 scenario_cwd,
                 scenario_env,
+                response_mode,
             )
 
         combined_output = result.stdout + result.stderr
