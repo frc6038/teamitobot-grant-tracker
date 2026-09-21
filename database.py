@@ -4,6 +4,7 @@ Database models and operations
 
 from sqlalchemy import (
     create_engine,
+    text,
     Column,
     Integer,
     BigInteger,
@@ -18,6 +19,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+import os
 import pytz
 
 from config import config
@@ -145,11 +147,49 @@ SessionLocal = sessionmaker(
 
 
 def init_db():
-    """Initialize database tables"""
+    """Verify the schema is at the expected Alembic head(s); does not create tables.
 
-    Base.metadata.create_all(bind=engine)
+    Şema yönetimi artık Alembic'e ait (bkz. alembic/). Bu fonksiyon sadece
+    alembic_version tablosunun VARLIĞINA değil, veritabanının gerçekten
+    BEKLENEN head revizyon(lar)ında olduğuna bakar. Eksik, eski, bilinmeyen
+    veya birden fazla/farklı head durumunda net bir hatayla durur — DB
+    URL'i veya kimlik bilgisi hiçbir zaman hata mesajına yazılmaz.
+    """
 
-    print("✅ Database initialized")
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    alembic_cfg = Config(os.path.join(repo_root, "alembic.ini"))
+    alembic_cfg.set_main_option(
+        "script_location", os.path.join(repo_root, "alembic")
+    )
+    expected_heads = set(ScriptDirectory.from_config(alembic_cfg).get_heads())
+
+    with engine.connect() as connection:
+        version_table_exists = connection.execute(
+            text("SELECT to_regclass('public.alembic_version')")
+        ).scalar()
+
+        current_heads = set()
+        if version_table_exists is not None:
+            current_heads = set(
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                )
+                .scalars()
+                .all()
+            )
+
+    if current_heads != expected_heads:
+        raise RuntimeError(
+            "Veritabanı şeması beklenen Alembic revizyonunda değil "
+            f"(mevcut: {sorted(current_heads) or 'yok'}, "
+            f"beklenen: {sorted(expected_heads)}). "
+            "'alembic upgrade head' çalıştırın."
+        )
+
+    print("✅ Database schema verified (Alembic)")
 
 
 def get_db():

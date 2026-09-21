@@ -237,6 +237,17 @@ def test_clean_runtime_install_excludes_dev_tools_and_imports(tmp_path):
     assert "IMPORT_OK" in result.stdout
     assert str(REPO_ROOT) not in result.stdout
 
+    # alembic runtime bağımlılığı (GRANT-09) kuruluysa CLI olarak da
+    # kullanılabilmeli; sadece import edilebilir olması yetmez.
+    alembic_result = subprocess.run(
+        [str(python), "-m", "alembic", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert alembic_result.returncode == 0
+    assert "alembic" in alembic_result.stdout.lower()
+
 
 @pytest.mark.timeout(CLEAN_INSTALL_TIMEOUT)
 def test_clean_dev_install_includes_test_and_lint_tooling(tmp_path):
